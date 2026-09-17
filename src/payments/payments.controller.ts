@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment } from './payment.entity.js';
 import { IdempotencyInterceptor } from './idempotency.interceptor.js';
+import { SqsService } from './sqs.service.js';
 
 @Controller('payments')
 @UseInterceptors(IdempotencyInterceptor)
@@ -10,6 +11,7 @@ export class PaymentsController {
     constructor(
         @InjectRepository(Payment)
         private readonly repo: Repository<Payment>,
+        private readonly sqsService: SqsService,
     ) { }
 
     @Post()
@@ -17,8 +19,6 @@ export class PaymentsController {
         @Headers('idempotency-key') key: string,
         @Body() body: { amount: number; currency: string },
     ) {
-        console.log('Received body:', body, 'key:', key);
-
         const payment = this.repo.create({
             amount: body.amount,
             currency: body.currency,
@@ -27,6 +27,21 @@ export class PaymentsController {
         });
 
         const saved = await this.repo.save(payment);
-        return { id: saved.id, status: saved.status, amount: saved.amount, currency: saved.currency };
+
+        // Async processing - API returns fast
+        await this.sqsService.sendPayment({
+            id: saved.id,
+            amount: saved.amount,
+            currency: saved.currency,
+            idempotencyKey: saved.idempotencyKey,
+        });
+
+        return {
+            id: saved.id,
+            status: saved.status,
+            amount: saved.amount,
+            currency: saved.currency,
+            message: 'Payment queued for processing'
+        };
     }
 }

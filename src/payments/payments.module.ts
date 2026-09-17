@@ -9,4 +9,4 @@ import { SqsService } from './sqs.service.js';
   controllers: [PaymentsController],
   providers: [SqsService],
 })
-export class PaymentsModule { }
+export class PaymentsModule {}
